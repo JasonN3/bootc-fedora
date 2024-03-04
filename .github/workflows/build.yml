@@ -75,14 +75,14 @@ jobs:
             - 38
             - 39
             - 40
-          ENVIRONMENT:
-            - Server
-            - Workstation
-          include:
-            - ENVIRONMENT: Server
-              GROUP: Fedora Server Edition
-            - ENVIRONMENT: Workstation
-              GROUP: Fedora Workstation
+        ENVIRONMENT:
+          - Server
+          - Workstation
+        include:
+          - ENVIRONMENT: Server
+            GROUP: Fedora Server Edition
+          - ENVIRONMENT: Workstation
+            GROUP: Fedora Workstation
     runs-on: ubuntu-latest
     needs:
       - build-container
@@ -113,13 +113,13 @@ jobs:
 
       - name: Rename ISO
         run: |
-          mv build/deploy.iso build/bootc-fedora-${{ env.VERSION }}-${{ matrix.ENVIRONMENT }}.iso
+          mv build/deploy.iso build/bootc-fedora-${{ matrix.VERSION }}-${{ matrix.ENVIRONMENT }}.iso
 
       - name: Upload ISO as artifact
         id: upload
         uses: actions/upload-artifact@v4
         with:
-          name: bootc-fedora-${{ env.VERSION }}-${{ matrix.ENVIRONMENT }}.iso
+          name: bootc-fedora-${{ matrix.VERSION }}-${{ matrix.ENVIRONMENT }}.iso
           path: build/*.iso
           if-no-files-found: error
           retention-days: 0
