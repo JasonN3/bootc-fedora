@@ -1,0 +1,148 @@
+name: Create and publish an ISO
+
+on:
+  push:
+    branches:
+      - 'main'
+    tags:
+      - 'v*'
+  pull_request:
+
+env:
+  IMAGE_REPO: ghcr.io/${{ github.repository_owner }}
+
+jobs:  
+  build-container:
+    strategy:
+      max-parallel: 2
+      matrix:
+        VERSION:
+          - 38
+          - 39
+          - 40
+        ENVIRONMENT:
+          - Server
+          - Workstation
+        include:
+          - ENVIRONMENT: Server
+            GROUP: Fedora Server Edition
+          - ENVIRONMENT: Workstation
+            GROUP: Fedora Workstation
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          # this might remove tools that are actually needed,
+          # if set to "true" but frees about 6 GB
+          tool-cache: false
+          
+          # all of these default to true, but feel free to set to
+          # "false" if necessary for your workflow
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ${{ env.IMAGE_REPO }}/bootc-fedora-${{ matrix.VERSION }}-${{ matrix.ENVIRONMENT }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+          labels: |
+            containers.bootc=1
+
+      - name: Buildah Build
+        id: build-image
+        uses: redhat-actions/buildah-build@v2
+        with:
+          containerfiles: Containerfile
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ matrix.VERSION }}
+            ENVIRONMENT=${{ matrix.GROUP }}
+          
+      - name: Push image
+        uses: redhat-actions/push-to-registry@v2
+        with:
+          image: ${{ steps.build-image.outputs.image }}
+          tags: ${{ steps.build-image.outputs.tags }}
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+
+  build-and-push-iso:
+    strategy:
+      max-parallel: 2
+      matrix:
+        VERSION:
+            - 38
+            - 39
+            - 40
+        ENVIRONMENT:
+          - Server
+          - Workstation
+        include:
+          - ENVIRONMENT: Server
+            GROUP: Fedora Server Edition
+          - ENVIRONMENT: Workstation
+            GROUP: Fedora Workstation
+    runs-on: ubuntu-latest
+    needs:
+      - build-container
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Lowercase Registry
+        id: registry_case
+        uses: ASzc/change-string-case-action@v6
+        with:
+          string: ${{ env.IMAGE_REPO }}
+
+      - name: Lowercase Registry
+        id: environment_case
+        uses: ASzc/change-string-case-action@v6
+        with:
+          string: ${{ matrix.ENVIRONMENT }}
+
+      - name: Build ISO with new container
+        uses: jasonn3/build-container-installer@v1.0.1
+        with:
+          image_name: bootc-fedora-${{ matrix.VERSION }}-${{ steps.environment_case.outputs.lowercase }}
+          image_repo: ${{ steps.registry_case.outputs.lowercase }}
+          image_tag: ${{ matrix.VERSION }}
+          version: 39
+
+      - name: Rename ISO
+        run: |
+          mv build/deploy.iso build/bootc-fedora-${{ matrix.VERSION }}-${{ matrix.ENVIRONMENT }}.iso
+
+      - name: Upload ISO as artifact
+        id: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: bootc-fedora-${{ matrix.VERSION }}-${{ matrix.ENVIRONMENT }}.iso
+          path: build/*.iso
+          if-no-files-found: error
+          retention-days: 0
+          compression-level: 0
+          overwrite: true
