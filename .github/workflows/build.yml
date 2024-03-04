@@ -99,10 +99,16 @@ jobs:
         with:
           string: ${{ env.IMAGE_REPO }}
 
+      - name: Lowercase Registry
+        id: environment_case
+        uses: ASzc/change-string-case-action@v6
+        with:
+          string: ${{ matrix.ENVIRONMENT }}
+
       - name: Build ISO with new container
         uses: jasonn3/build-container-installer@v1.0.1
         with:
-          image_name: bootc-fedora-${{ matrix.VERSION }}-${{ matrix.ENVIRONMENT }}
+          image_name: bootc-fedora-${{ matrix.VERSION }}-${{ steps.environment_case.outputs.lowercase }}
           image_repo: ${{ steps.registry_case.outputs.lowercase }}
           image_tag: ${{ matrix.VERSION }}
           version: 39
