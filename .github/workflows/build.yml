@@ -8,6 +8,9 @@ on:
       - 'v*'
   pull_request:
 
+env:
+  IMAGE_REPO: ghcr.io/${{ github.repository }}
+
 jobs:  
   build-container:
     strategy:
@@ -18,8 +21,13 @@ jobs:
           - 39
           - 40
         ENVIRONMENT:
-          - Fedora Server Edition
-          - Fedora Workstation
+          - Server
+          - Workstation
+        include:
+          - ENVIRONMENT: Server
+            GROUP: Fedora Server Edition
+          - ENVIRONMENT: Workstation
+            GROUP: Fedora Workstation
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -33,7 +41,7 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: |
-            ghcr.io/${{ github.repository }}
+            ${{ env.IMAGE_REPO }}-${{ matrix.VERSION }}-${{ matrix.ENVIRONMENT }}
           tags: |
             type=ref,event=branch
             type=ref,event=pr
@@ -48,7 +56,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           build-args: |
             VERSION=${{ matrix.VERSION }}
-            ENVIRONMENT=${{ matrix.ENVIRONMENT }}
+            ENVIRONMENT=${{ matrix.GROUP }}
           
       - name: Push image
         uses: redhat-actions/push-to-registry@v2
@@ -57,3 +65,63 @@ jobs:
           tags: ${{ steps.build-image.outputs.tags }}
           username: ${{ github.actor }}
           password: ${{ github.token }}
+
+
+  build-and-push-iso:
+    strategy:
+      max-parallel: 2
+      matrix:
+        VERSION:
+          - 38
+          - 39
+          - 40
+          ENVIRONMENT:
+            - Server
+            - Workstation
+          include:
+            - ENVIRONMENT: Server
+              GROUP: Fedora Server Edition
+            - ENVIRONMENT: Workstation
+              GROUP: Fedora Workstation
+    runs-on: ubuntu-latest
+    needs:
+      - build-container
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Get image version
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+
+      - name: Build ISO with new container
+        uses: jasonn3/build-container-installer@v1.0.1
+        with:
+          image_name: bootc-fedora-${{ matrix.VERSION }}-${{ matrix.ENVIRONMENT }}
+          image_repo: ${{ env.IMAGE_REPO }}
+          image_tag: ${{ matrix.VERSION }}
+          version: 39
+
+      - name: Rename ISO
+        run: |
+          mv build/deploy.iso build/bootc-fedora-${{ env.VERSION }}-${{ matrix.ENVIRONMENT }}.iso
+
+      - name: Upload ISO as artifact
+        id: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: bootc-fedora-${{ env.VERSION }}-${{ matrix.ENVIRONMENT }}.iso
+          path: build/*.iso
+          if-no-files-found: error
+          retention-days: 0
+          compression-level: 0
+          overwrite: true
