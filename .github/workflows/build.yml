@@ -93,21 +93,17 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Get image version
-        id: meta
-        uses: docker/metadata-action@v5
+      - name: Lowercase Registry
+        id: registry_case
+        uses: ASzc/change-string-case-action@v6
         with:
-          tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
+          string: ${{ env.IMAGE_REPO }}
 
       - name: Build ISO with new container
         uses: jasonn3/build-container-installer@v1.0.1
         with:
           image_name: bootc-fedora-${{ matrix.VERSION }}-${{ matrix.ENVIRONMENT }}
-          image_repo: ${{ env.IMAGE_REPO }}
+          image_repo: ${{ steps.registry_case.outputs.lowercase }}
           image_tag: ${{ matrix.VERSION }}
           version: 39
 
